@@ -44,7 +44,7 @@ extern void aon_lpc_config();
 #include "dev_tree.h"
 #endif
 
-#include "../../../../kernel/kernel4.14/include/soc/sprd/board.h"
+#include "soc/sprd/board.h"
 
 #if (defined CONFIG_SECBOOT) && (defined CONFIG_VBOOT_V2)
 unsigned os_version __attribute__((aligned(4096))); /*must be PAGE ALIGNED*/
@@ -1079,6 +1079,37 @@ error:
 	return ret;
 }
 
+/* [autoplace] runtime kernel load/jump address, derived from the Image header */
+ulong g_kernel_load_addr = KERNEL_ADR;
+
+#define UBOOT_ARM64_IMAGE_MAGIC 0x644d5241UL
+
+/* Read text_offset from an arm64 Image header and return where it must live. */
+static ulong kernel_place_from_hdr(const u8 *hdr)
+{
+	u64 text_offset;
+	u32 magic;
+
+	if (!hdr)
+		return KERNEL_ADR;
+
+	magic = *(const u32 *)(hdr + 0x38);
+	if (magic != UBOOT_ARM64_IMAGE_MAGIC) {
+		printf("[autoplace] no arm64 Image magic, fall back to 0x%x\n", KERNEL_ADR);
+		return KERNEL_ADR;
+	}
+
+	memcpy(&text_offset, hdr + 0x08, sizeof(text_offset));
+	if (text_offset >= 0x2000000ULL) {
+		printf("[autoplace] odd text_offset 0x%llx, fall back\n", text_offset);
+		return KERNEL_ADR;
+	}
+
+	printf("[autoplace] text_offset=0x%llx -> load 0x%llx\n",
+	       text_offset, (u64)KERNEL_BASE_ADDR + text_offset);
+	return (ulong)(KERNEL_BASE_ADDR + text_offset);
+}
+
 int _boot_load_kernel_ramdisk_image(char *bootmode, boot_img_hdr * hdr, uchar **dt_addr )
 {
 	uchar *partition = NULL;
@@ -1103,6 +1134,7 @@ int _boot_load_kernel_ramdisk_image(char *bootmode, boot_img_hdr * hdr, uchar **
 	debugf("!!! load kernel partition %s: \n!!! kernel (0x%x:0x%x)\n!!! ramdisk(0x%x:0x%x) dt=%d\n",
 		partition,hdr->kernel_addr,hdr->kernel_size,hdr->ramdisk_addr,
 		hdr->ramdisk_size, hdr->dt_size);
+	printf("[L1] hdr ok, kernel_size=0x%x ramdisk_size=0x%x\n", hdr->kernel_size, hdr->ramdisk_size);
 	/* get kernel image size */
 	size = PAD_SIZE(hdr->kernel_size, KERNL_PAGE_SIZE);
 	if (0 == size) {
@@ -1110,12 +1142,62 @@ int _boot_load_kernel_ramdisk_image(char *bootmode, boot_img_hdr * hdr, uchar **
 		return 0;
 	}
 
-	/* read kernel image */
-	if (0 != common_raw_read(partition, size, (uint64_t)(boot_img_offset.kernel_offset) , (char *)KERNEL_ADR)) {
-		errorf("%s kernel read error!\n", partition);
-		return 0;
+	/* [gzkernel] read the kernel, handling a gzipped Image and honouring the
+	 * arm64 Image header text_offset. */
+	{
+		u8 gz_magic[4];
+		u64 load_addr = KERNEL_ADR;
+		int is_gz = 0;
+
+		if ((0 == common_raw_read(partition, 4, (uint64_t)(boot_img_offset.kernel_offset), (char *)gz_magic))
+		    && (0x1f == gz_magic[0]) && (0x8b == gz_magic[1]) && (0x08 == gz_magic[2])) {
+			is_gz = 1;
+			load_addr = KERNEL_GZIP_STAGE_ADDR;
+			printf("[L2] gzip kernel, staging at 0x%llx\n", load_addr);
+		}
+
+		if (0 != common_raw_read(partition, size, (uint64_t)(boot_img_offset.kernel_offset), (char *)load_addr)) {
+			errorf("%s kernel read error!\n", partition);
+			return 0;
+		}
+
+		if (is_gz) {
+			unsigned long ulen = (unsigned long)size;	/* in: src length, out: result length */
+			u64 want;
+
+			if (0 != gunzip((void *)KERNEL_BASE_ADDR, (int)KERNEL_GZIP_MAX_OUT,
+					(u8 *)load_addr, &ulen)) {
+				errorf("%s kernel gunzip failed!\n", partition);
+				return 0;
+			}
+			want = kernel_place_from_hdr((const u8 *)KERNEL_BASE_ADDR);
+			if (want != KERNEL_BASE_ADDR)
+				memmove((void *)want, (void *)KERNEL_BASE_ADDR, (size_t)ulen);
+			load_addr = want;
+			printf("[L2] gunzip ulen=0x%lx placed 0x%llx\n", ulen, load_addr);
+			printf("[L2] hdr %08x %08x magic %08x text_off 0x%llx\n",
+			       *(u32 *)(KERNEL_BASE_ADDR + 0), *(u32 *)(KERNEL_BASE_ADDR + 4),
+			       *(u32 *)(KERNEL_BASE_ADDR + 0x38),
+			       *(u64 *)(KERNEL_BASE_ADDR + 0x08));
+		} else {
+			u64 want;
+
+			if (0 != common_raw_read(partition, 0x40, (uint64_t)(boot_img_offset.kernel_offset), (char *)KERNEL_ADR)) {
+				errorf("%s kernel header read error!\n", partition);
+				return 0;
+			}
+			want = kernel_place_from_hdr((const u8 *)KERNEL_ADR);
+			if (0 != common_raw_read(partition, size, (uint64_t)(boot_img_offset.kernel_offset), (char *)want)) {
+				errorf("%s kernel read error!\n", partition);
+				return 0;
+			}
+			load_addr = want;
+			printf("[L2] kernel read ok, size=0x%llx -> 0x%llx\n", size, load_addr);
+		}
+
+		g_kernel_load_addr = (ulong)load_addr;
+		printf("[L2] kernel placed at 0x%lx\n", g_kernel_load_addr);
 	}
-	debugf("%s kernel read OK,size=0x%llx, locate to 0x%lx \n", partition, size, (ulong)KERNEL_ADR);
 
 	if (hdr->ramdisk_size) {	//androidp recovery mode need load ramdisk
 		ramdisk_addr = RAMDISK_ADR;
@@ -1154,6 +1236,7 @@ int _boot_load_kernel_ramdisk_image(char *bootmode, boot_img_hdr * hdr, uchar **
 	}
 
 	/* for memory defragment, dr_addr and ramdisk_adr is allocated dynamically*/
+	printf("[L3] load dt %s\n", dtb_partname);
 	if (0 == load_fixup_dt_img(dtb_partname, dt_addr)) {
 		if (DT_ADR != *dt_addr) {
 			debugf("allocate dt_addr:%lx \n", *dt_addr);
@@ -1166,6 +1249,7 @@ int _boot_load_kernel_ramdisk_image(char *bootmode, boot_img_hdr * hdr, uchar **
 		errorf("load dt error!\n");
 		return 0;
 	}
+	printf("[L4] dt ok, addr=0x%lx\n", (ulong)*dt_addr);
 #ifdef CONFIG_OF_LIBFDT_OVERLAY
 	if (BOOT_HEADER_VERSION_ONE == hdr->header_version) {
 		if (0 == memcmp(bootmode, RECOVERY_PART, strlen(RECOVERY_PART))) {
@@ -1182,6 +1266,7 @@ int _boot_load_kernel_ramdisk_image(char *bootmode, boot_img_hdr * hdr, uchar **
 #endif
 #endif
 
+	printf("[L5] ramdisk stage, size=0x%x\n", hdr->ramdisk_size);
 	if( hdr->ramdisk_size ) {
 		fdt_initrd_norsvmem(*dt_addr, ramdisk_addr, ramdisk_addr + hdr->ramdisk_size, 1);
 		if (0 == size) {
@@ -1686,11 +1771,13 @@ extern unsigned int g_charger_mode;
 		if (!_boot_load_kernel_ramdisk_image(kernel_pname, hdr, &dt_adr))
 			ret = -1;
 #else
+	printf("[K1] read kernel %s\n", kernel_pname);
 	/*loader kernel and ramdisk*/
 	if (!_boot_load_kernel_ramdisk_image(kernel_pname, hdr, &dt_adr))
 		ret = -1;
 #endif
 
+	printf("[K2] kernel load ret=%d dt=0x%x\n", ret, (u32)(ulong)dt_adr);
 	if (-1 == ret)
 		return;
 
@@ -1740,5 +1827,9 @@ extern unsigned int g_charger_mode;
 	i2c_dvfs_hwchn_init();
 #endif
 
+	printf("[K3] jump 0x%lx dt=0x%lx hdr %08x %08x t_off 0x%llx\n",
+	       g_kernel_load_addr, (ulong)dt_adr,
+	       *(u32 *)(g_kernel_load_addr + 0), *(u32 *)(g_kernel_load_addr + 4),
+	       *(u64 *)(g_kernel_load_addr + 0x08));
 	vlx_entry(dt_adr);
 }

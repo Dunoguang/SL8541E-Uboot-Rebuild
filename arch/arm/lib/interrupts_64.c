@@ -79,10 +79,50 @@ void do_bad_error(struct pt_regs *pt_regs, unsigned int esr)
 /*
  * do_sync handles the Synchronous Abort exception.
  */
+
+/* [dbg] scan stack for values that look like kernel return addresses */
+static void scan_kaddr(unsigned long base, unsigned long len, int cap, const char *tag)
+{
+	unsigned long i, v;
+	int n = 0;
+
+	if (base < 0x80000000UL || base + len > 0xc0000000UL) {
+		printf("[dbg] %s range bad\n", tag);
+		return;
+	}
+	printf("[dbg] scan %s 0x%lx..0x%lx\n", tag, base, base + len);
+	for (i = 0; i < len; i += 8) {
+		v = *(volatile unsigned long *)(base + i);
+		if (v >= 0x80000000UL && v < 0x83000000UL && n < cap) {
+			printf("      +0x%04lx  0x%lx\n", i, v);
+			n++;
+		}
+	}
+}
+
 void do_sync(struct pt_regs *pt_regs, unsigned int esr)
 {
+	unsigned long mpidr = 0, curel = 0, spsr = 0, el;
+
+	__asm__ volatile("mrs %0, mpidr_el1" : "=r"(mpidr));
+	__asm__ volatile("mrs %0, CurrentEL" : "=r"(curel));
+	el = (curel >> 2) & 3;
+	if (el == 2)
+		__asm__ volatile("mrs %0, spsr_el2" : "=r"(spsr));
+	printf("[dbg] MPIDR=0x%lx CurrentEL=0x%lx (EL%ld) SPSR=0x%lx\n",
+	       mpidr, curel, el, spsr);
 	printf("\"Synchronous Abort\" handler, esr 0x%08x\n", esr);
+	scan_kaddr(((pt_regs->regs[29]) & ~0x3fUL) - 0x2000, 0x2000, 6, "uboot-stk");
+	scan_kaddr(0x821e0000UL, 0x4000, 8, "init_thread_union");
+	scan_kaddr(0x82620000UL, 0x4000, 8, "boot-stk");
 	show_regs(pt_regs);
+	printf("[dbg] kern boot_args=%lx,%lx,%lx,%lx fdt=%lx cmd=%lx\n",
+	       *(volatile unsigned long *)0x821e5000UL,
+	       *(volatile unsigned long *)0x821e5008UL,
+	       *(volatile unsigned long *)0x821e5010UL,
+	       *(volatile unsigned long *)0x821e5018UL,
+	       *(volatile unsigned long *)0x81be9370UL,
+	       *(volatile unsigned long *)0x81a17d08UL);
 	panic("Resetting CPU ...\n");
 }
 

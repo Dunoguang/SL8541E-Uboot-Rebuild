@@ -55,6 +55,7 @@ extern struct panel_spec lcd_hx8389c_mipi_spec;
 extern struct panel_spec ili6150_lvds_spec;
 extern struct panel_spec lcd_rm68180_mipi_spec;
 extern struct panel_spec lcd_ili9806e_mipi_spec;
+extern struct panel_spec lcd_co5300_oled206_mipi_spec;
 extern struct panel_spec lcd_ili9806e_2_mipi_spec;
 extern struct panel_spec lcd_otm8019a_mipi_spec;
 extern struct panel_spec lcd_otm1906c_mipi_spec;
@@ -127,6 +128,13 @@ udc_lcd* g_sc9850_udc_lcd;
 #else
 static struct panel_cfg panel_cfg[] = {
 #if 1//AUTO_GEN_TAG_LCD_CFG
+#if defined (CONFIG_FB_LCD_CO5300_OLED206_MIPI)
+{
+.lcd_id = 0x530206,
+.panel = &lcd_co5300_oled206_mipi_spec,
+},
+#endif
+
 #if defined (CONFIG_FB_LCD_ILI9885_MIPI)
 	{
 		.lcd_id = 0x98,

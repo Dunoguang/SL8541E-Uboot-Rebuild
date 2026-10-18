@@ -24,11 +24,11 @@
 #define CONFIG_SPL_BAK
 #define CONFIG_MISC_INIT_R                     /* call misc_init_r()	      */
 #define CONFIG_BOARD_LATE_INIT         /* call board_late_init() */
-//#define CONFIG_SUPPORT_RAW_INITRD
+/* #define CONFIG_SUPPORT_RAW_INITRD */
 
 /* Cache Definitions */
-//#define CONFIG_SYS_DCACHE_OFF
-//#define CONFIG_SYS_ICACHE_OFF
+/* #define CONFIG_SYS_DCACHE_OFF */
+/* #define CONFIG_SYS_ICACHE_OFF */
 
 #define CONFIG_IDENT_STRING		"sharklE"
 
@@ -119,11 +119,11 @@
 #define CONFIG_CMD_IMI
 #define CONFIG_CMD_MEMORY
 #define CONFIG_CMD_MII
-//#define CONFIG_CMD_NET
+/* #define CONFIG_CMD_NET */
 #define CONFIG_CMD_PING
 #define CONFIG_CMD_SAVEENV
 #define CONFIG_CMD_RUN
-//#define CONFIG_CMD_BOOTD
+/* #define CONFIG_CMD_BOOTD */
 #define CONFIG_CMD_ECHO
 #define CONFIG_CMD_SOURCE
 #define CONFIG_CMD_FAT
@@ -201,18 +201,18 @@
 #define CONFIG_BOOTARGS MEM_INIT_PARA" loglevel=7 console=ttyS0,115200n8 init=/init " MTDPARTS_DEFAULT
 
 /*auto boot with normal mode*/
-//#define CONFIG_AUTOBOOT
+/* #define CONFIG_AUTOBOOT */
 
 /*boot with modem*/
 #define BOOT_NATIVE_LINUX_MODEM  1
 
-//#define CONFIG_MINI_TRUSTZONE
+/* #define CONFIG_MINI_TRUSTZONE */
 
 #define CONFIG_SUPPORT_LTE
 #define CONFIG_ADVANCED_LTE
 
-//#define CONFIG_SUPPORT_WLTE
-//#define CONFIG_SUPPORT_GSM
+/* #define CONFIG_SUPPORT_WLTE */
+/* #define CONFIG_SUPPORT_GSM */
 
 #define LTE_AGDSP_SIZE  0x00260000
 #define LTE_AGDSP_ADDR (0x89600000 - LTE_AGDSP_SIZE)
@@ -235,7 +235,7 @@
 
 /*log config*/
 #define CONFIG_SPRD_LOG
-//#define CONFIG_LOG_2_SD
+/* #define CONFIG_LOG_2_SD */
 #define CONFIG_LOG_2_EMMC
 
 /*eMMC boot*/
@@ -259,9 +259,9 @@
 #define USB3_PHY_TUNE1 0x919e9dec
 #define USB3_PHY_TUNE2 0x0f0560fe
 #define CONFIG_USB_PHY_SHARKLE
-//#define CALIBRATION_FLAG_CP0           0x88AF0000
+/* #define CALIBRATION_FLAG_CP0           0x88AF0000 */
 #define CALIBRATION_FLAG_CP1	0x8d7d0000
-//#define CONFIG_DWC_OTG
+/* #define CONFIG_DWC_OTG */
 #define CONFIG_MODEM_CALIBERATE
 #define CALIBRATE_ENUM_MS 15000
 #define CALIBRATE_IO_MS 2000
@@ -294,6 +294,15 @@
 #define SIMLOCK_ADR      (0x891FE800+0x4)   //0x4 just for data header
 
 #define KERNEL_ADR      0x80080000
+/* [autoplace] arm64 Image 的基址；实际落点 = KERNEL_BASE_ADDR + text_offset */
+#define KERNEL_BASE_ADDR 0x80000000
+
+/* [gzipkernel] staging area for a gzipped kernel image.
+ * Lives inside the download / fastboot reserved window (0x82000000..0x92000000),
+ * placed above the largest decompressed kernel so src and dst never overlap.
+ */
+#define KERNEL_GZIP_STAGE_ADDR   0x83800000
+#define KERNEL_GZIP_MAX_OUT      (KERNEL_GZIP_STAGE_ADDR - KERNEL_BASE_ADDR)
 #define DT_ADR          0x85400000
 #define RAMDISK_ADR     0x85500000
 
@@ -360,7 +369,7 @@
 #define CONFIG_7S_RST_THRESHOLD		7	//7S, hold key down for this time to trigger
 
  /*SMPL config*/
-//#define CONFIG_SMPL_EN
+/* #define CONFIG_SMPL_EN */
 #define CONFIG_SMPL_THRESHOLD 	0		//one step is 0.25S
 
 /* Chip Driver Macro Definitions End*/
@@ -384,4 +393,28 @@
 /**** PAGE_ALIGN ****/
 #define TOS_TRUSTY
 
+
+/* Board is TSX (32k-less) crystal solution: required by sprd_boardid_sp9832e.c get_clockid() */
+#define ZCFG_TSX_32KLESS
+
 #endif /* __TSHARK_L_H */
+
+/* co5300 AMOLED 412x502 panel */
+#define CONFIG_FB_LCD_CO5300_OLED206_MIPI
+
+/* [noverify] skip partition signature / vbmeta verification in the loader path.
+ * The device already runs an unlocked (no-avb) trustos, so the checks would
+ * only reject our self-built images.  Comment this out to restore them.
+ */
+/* #define UBOOT_NO_PART_VERIFY */  /* superseded by [forceok] in sec_common.c */
+
+/* [usblog] mirror console output to the u2s USB channel.
+ * Set usblog_ready in cali_usb_enum() once gs_open() succeeded.
+ */
+#define CONFIG_UBOOT_USBLOG
+
+/* [lcdlog] mirror console output onto the panel too.
+ * Everything printed after lcd_enable() shows on screen and scrolls
+ * the logo away once it exceeds the panel height.
+ */
+#define CONFIG_UBOOT_LCDLOG

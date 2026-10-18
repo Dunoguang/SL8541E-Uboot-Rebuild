@@ -260,8 +260,52 @@ boot_mode_enum_type  get_mode_from_gpio_extend(void)
 	}
 }
 
+
+/* [klog] scan the kernel printk buffer area for leftover text */
+static void dump_klog(void)
+{
+	unsigned char *b = (unsigned char *)0x824d0000UL;
+	unsigned long i, n, lines = 0, len = 0x30000UL;
+
+	for (i = 0; i < len && lines < 40; i++) {
+		if (b[i] >= 0x20 && b[i] < 0x7f) {
+			n = i;
+			while (n < len && b[n] >= 0x20 && b[n] < 0x7f)
+				n++;
+			if (n - i >= 12) {
+				printf("K| %.*s\n", (int)((n - i) > 110 ? 110 : (n - i)), &b[i]);
+				lines++;
+			}
+			i = n;
+		}
+	}
+	printf("[klog] %lu lines from 0x824d0000\n", lines);
+	printf("[klog] marker 8F000000: %08lx str=%.16s\n",
+	       *(volatile unsigned long *)0x8F000000UL, (char *)0x8F000010UL);
+	printf("[klog] bss 824d9918: %08lx %08lx %08lx %08lx\n",
+	       *(volatile unsigned long *)0x824d9918UL,
+	       *(volatile unsigned long *)0x824d9920UL,
+	       *(volatile unsigned long *)0x824d9928UL,
+	       *(volatile unsigned long *)0x824d9930UL);
+}
+
 int do_cboot(cmd_tbl_t *cmdtp, int flag, int argc, char *const argv[])
 {
+
+	/* [earlylcd] bring the panel up before mode detection, so the whole early
+	 * boot log is visible even on a warm reboot where nothing else shows. */
+	{
+		extern int drv_lcd_init(void);
+		extern void lcd_enable(void);
+		extern char lcd_is_enabled;
+
+		if (!lcd_is_enabled) {
+			drv_lcd_init();
+			lcd_enable();
+		}
+	}
+	printf("\n[boot] cboot start\n");
+	dump_klog();
 	volatile int i;
 	boot_mode_enum_type bootmode = CMD_UNDEFINED_MODE;
 	CBOOT_MODE_ENTRY boot_mode_array[CMD_MAX_MODE] ={0};
@@ -294,10 +338,13 @@ int do_cboot(cmd_tbl_t *cmdtp, int flag, int argc, char *const argv[])
 	} else {
 		for (i = 0;  i < CHECK_BOOTMODE_FUN_NUM; i++) {
 			if (0 == s_boot_func_array[i]) {
-				bootmode = CMD_POWER_DOWN_DEVICE;
+				/* [nopowerdown] no check detected a mode: boot normally instead of
+				 * powering the device off, which is what makes a soft reboot look dead. */
+				bootmode = CMD_NORMAL_MODE;
 				break;
 			}
 			bootmode = s_boot_func_array[i]();
+			printf("cboot: check[%d] -> %d\n", i, (int)bootmode);
 			if (CMD_UNDEFINED_MODE == bootmode) {
 
 				continue;

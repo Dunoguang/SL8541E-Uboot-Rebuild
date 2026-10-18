@@ -7,6 +7,8 @@
 #include <linux/usb/usb_uboot.h>
 #include <sprd_common_rw.h>
 
+extern int usblog_ready;	/* [usblog] defined in usblog.c */
+
 #define MAX_CALIBRATION_LEN   50
 #define CMD_BUF_NUMBER 20
 
@@ -332,6 +334,7 @@ int cali_usb_enum(void)
 			}
 		}
 	gs_open();
+	usblog_ready = 1;	/* [usblog] port is open, start mirroring console */
 	printf("USB SERIAL PORT OPENED\n");
 	return 1;
 }

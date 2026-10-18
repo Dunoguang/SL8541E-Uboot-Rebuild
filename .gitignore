@@ -1,0 +1,14 @@
+# build output
+/out/
+*.o
+*.su
+*.cmd
+*.d
+
+# editor / patch leftovers
+*.bak
+*.bak_*
+*.bak2
+*.orig
+*.rej
+*~

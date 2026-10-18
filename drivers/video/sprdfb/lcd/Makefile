@@ -1,3 +1,4 @@
+obj-$(CONFIG_FB_LCD_CO5300_OLED206_MIPI) += lcd_co5300_oled206_mipi.o
 obj-y += lcd_dummy_mipi.o
 obj-$(CONFIG_FB_LCD_HX8363_RGB_SPI) += lcd_hx8363_rgb_spi.o
 obj-$(CONFIG_FB_LCD_HX8363_MCU) += lcd_hx8363_mcu.o

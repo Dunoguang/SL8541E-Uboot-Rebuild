@@ -141,7 +141,8 @@ int board_late_init(void)
 
 CBOOT_FUNC s_boot_func_array[CHECK_BOOTMODE_FUN_NUM] = {
 	get_mode_from_bat_low,
-	write_sysdump_before_boot_extend,
+	/* [nosysdump] sysdump needs a valid sysdumpdb/pm_sys layout; on this board it
+	 * errors out and can spin.  It is not needed to boot.  was: write_sysdump_before_boot_extend, */
 	get_mode_from_miscdata_boot_flag,
 	/* 1 get mode from file*/
 	get_mode_from_file_extend,

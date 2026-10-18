@@ -52,12 +52,12 @@ uint32_t lcd_get_bpix(void)
 	return panel_info.vl_bpix;
 }
 
-void inline save_lcd_id_to_kernel(uint32_t id)
+void save_lcd_id_to_kernel(uint32_t id)
 {
 	lcd_id_to_kernel = id;
 }
 
-uint32_t inline load_lcd_id_to_kernel(void)
+uint32_t load_lcd_id_to_kernel(void)
 {
 	return lcd_id_to_kernel;
 }

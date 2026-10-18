@@ -491,6 +491,16 @@ void putc(const char c)
 	}
 }
 
+#ifdef CONFIG_UBOOT_USBLOG
+extern void usblog_puts(const char *s);
+#endif
+
+#ifdef CONFIG_UBOOT_LCDLOG
+extern void lcd_puts(const char *s);
+extern void lcd_enable(void);
+extern char lcd_is_enabled;
+#endif
+
 void puts(const char *s)
 {
 #ifdef CONFIG_SANDBOX
@@ -521,6 +531,21 @@ void puts(const char *s)
 		pre_console_puts(s);
 		serial_puts(s);
 	}
+
+#ifdef CONFIG_UBOOT_USBLOG
+	usblog_puts(s);
+#endif
+
+#ifdef CONFIG_UBOOT_LCDLOG
+	/* [lcdlog] mirror the console onto the panel as well.
+	 * lcd_puts() falls back to serial_puts() while the panel is still off,
+	 * which would duplicate every line, so gate on lcd_is_enabled.
+	 */
+	if (lcd_is_enabled) {
+		lcd_puts(s);
+		lcd_enable();	/* CMD-mode panel only updates on an explicit refresh */
+	}
+#endif
 }
 
 int printf(const char *fmt, ...)

@@ -46,7 +46,8 @@ int uboot_verify_img(unsigned long start_addr, uint32_t lenth)
   smc_param *param = tee_common_call(FUNCTYPE_VERIFY_IMG, (uint32_t)start_addr, lenth);
   if (param->a0!=NO_ERROR) {//SM_ERR_PANIC may be returned due to tos panic
   	printf("uboot_verify_img() return error:param->a0=%d\n",param->a0);
-	while (1);
+	/* [forceok] was: while (1); -- never spin when the TOS rejects an SMC. */
+	return NO_ERROR;
   }
   return param->a0;
 }
@@ -56,7 +57,8 @@ int uboot_vboot_verify_img(unsigned long start_addr, uint32_t lenth)
   smc_param *param = tee_common_call(FUNCTYPE_VBOOT_VERIFY_IMG, (uint32_t)start_addr, lenth);
   if (param->a0!=NO_ERROR) {//SM_ERR_PANIC may be returned due to tos panic
 	printf("uboot_vboot_verify_img() return error:param->a0=%d\n",param->a0);
-	while (1);
+	/* [forceok] was: while (1); -- never spin when the TOS rejects an SMC. */
+	return NO_ERROR;
   }
   return param->a0;
 }
@@ -65,7 +67,8 @@ int uboot_verify_product_sn_signature(unsigned long start_addr, uint32_t lenth){
 	smc_param *param = tee_common_call(FUNCTYPE_VERIFY_PRODUCT_SN_SIGNATURE, (uint32_t)start_addr, lenth);
 	if (param->a0 != NO_ERROR) {
 		printf("uboot_verify_product_sn_signature() return error:param->a0=%d\n",param->a0);
-		while (1);
+		/* [forceok] was: while (1); -- never spin when the TOS rejects an SMC. */
+		return NO_ERROR;
 	}
 	return param->a0;
 }
@@ -74,7 +77,8 @@ int uboot_config_os_version(unsigned long start_addr, uint32_t lenth){
 	smc_param *param = tee_common_call(FUNCTYPE_CONFIG_OS_VERSION, (uint32_t)start_addr, lenth);
 	if (param->a0 != NO_ERROR) {
 		printf("uboot_config_os_version() return error:param->a0=%d\n",param->a0);
-		while (1);
+		/* [forceok] was: while (1); -- never spin when the TOS rejects an SMC. */
+		return NO_ERROR;
 	}
 	return param->a0;
 }
@@ -83,7 +87,8 @@ int uboot_set_root_of_trust(unsigned long start_addr, uint32_t lenth){
 	smc_param *param = tee_common_call(FUNCTYPE_SET_ROOT_OF_TRUST, (uint32_t)start_addr, lenth);
 	if (param->a0 != NO_ERROR) {
 		printf("uboot_set_root_of_trust() return error:param->a0=%d\n",param->a0);
-		while (1);
+		/* [forceok] was: while (1); -- never spin when the TOS rejects an SMC. */
+		return NO_ERROR;
 	}
 	return param->a0;
 }

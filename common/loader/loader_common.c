@@ -1,4 +1,6 @@
 #include "loader_common.h"
+#include <asm/global_data.h>
+DECLARE_GLOBAL_DATA_PTR;
 #include <mmc.h>
 #include <fat.h>
 #if defined(CONFIG_OF_LIBFDT)
@@ -23,6 +25,7 @@
 #ifdef ZCFG_KEY_VOLUME_DOWN_ANTI_SHAKE
 #include <asm/io.h>
 #include <asm/arch/pinmap.h>
+
 #endif
 
 #define DECOUPLING_INFO_PARTITION "modem"
@@ -104,6 +107,8 @@ char *get_product_sn(void)
 	return serial_number_to_transfer;
 }
 
+extern int fdt_chosen_bootargs_append(void *fdt, char *append_args, int force);
+
 void fdt_fixup_all(u8 *fdt_blob)
 {
 	uint32_t fdt_size;
@@ -114,6 +119,9 @@ void fdt_fixup_all(u8 *fdt_blob)
 	if (fdt_check_header(fdt_blob) != 0) {
 		errorf("image is not a fdt\n");
 	}
+
+	/* [fbcon] kernel log to the panel via DRM fbdev */
+	fdt_chosen_bootargs_append(fdt_blob, (char *)" console=tty0", 1);
 
 #ifdef CONFIG_SPLASH_SCREEN
 	fdt_fixup_lcdid(fdt_blob);
@@ -320,7 +328,7 @@ static int start_linux(uchar *dt_addr)
 {
 #ifdef CONFIG_OF_LIBFDT
 	void (*theKernel) (int zero, int arch, u32 params);
-	theKernel = (void (*)(void *, int, int, int))KERNEL_ADR;
+	theKernel = (void (*)(void *, int, int, int))g_kernel_load_addr;	/* [autoplace] */
 
 	/*disable all caches */
 	cleanup_before_linux();
@@ -358,10 +366,89 @@ static int start_linux(uchar *dt_addr)
 	return 0;
 }
 #endif
+
+
+
+
+static void arm_probe(uchar *dt);
+static void probe_dump(void);
+
+/* [probe] print CPU state at the kernel entry, then continue */
+static void probe_dump(void)
+{
+    unsigned long sctlr = 0, mmfr0 = 0, el = 0, mpidr = 0;
+
+    __asm__ volatile("mrs %0, sctlr_el1" : "=r"(sctlr));
+    __asm__ volatile("mrs %0, id_aa64mmfr0_el1" : "=r"(mmfr0));
+    __asm__ volatile("mrs %0, CurrentEL" : "=r"(el));
+    __asm__ volatile("mrs %0, mpidr_el1" : "=r"(mpidr));
+    printf("[K] sctlr0=%08lx sctlr=%08lx mmfr0=%08lx parange=%lu el=%lu mpidr=%08lx\n",
+           *(volatile unsigned long *)0x84000200UL,
+           sctlr, mmfr0, (mmfr0 >> 28) & 0xfUL, (el >> 2) & 3UL, mpidr);
+}
+
+#define PROBE_STUB    0x84000100UL
+#define PROBE_TARGET  0x81aec0c0UL     /* after __enable_mmu */
+
+static void arm_probe(uchar *dt)
+{
+    u32 w[17] = {
+        0xd10183ff, 0xa90007e0, 0xa9010fe2, 0xa90217e4, 0xa9031fe6,
+        0xa9047bf3, 0xd503201f, 0xd503201f, 0xd503201f, 0xa9447bf3,
+        0xa9431fe6, 0xa94217e4, 0xa9410fe2, 0xa94007e0, 0x910183ff,
+        0xd503201f, 0x176bafe1
+    };
+    volatile u32 *stub = (volatile u32 *)PROBE_STUB;
+    u32 tgt = (u32)(ulong)&probe_dump;
+    u32 delta, i;
+
+    w[6] = 0xd2800000u | (((tgt & 0xffffu) << 5)) | 16u;
+    w[7] = 0xf2800000u | (1u << 21) | ((((tgt >> 16) & 0xffffu) << 5)) | 16u;
+    w[8] = 0xd63f0200u;            /* blr x16 */
+
+    for (i = 0; i < 17; i++)
+        stub[i] = w[i];
+
+    delta = (u32)(PROBE_STUB - PROBE_TARGET) >> 2;
+    *(volatile u32 *)PROBE_TARGET = 0x14000000u | (delta & 0x3FFFFFFu);
+
+    {
+        int noff = fdt_path_offset((void *)dt, "/memory");
+        const u32 *r;
+        int len = 0;
+        if (noff < 0)
+            noff = fdt_path_offset((void *)dt, "/memory@80000000");
+        printf("[mem] gd->ram_size=0x%llx\n", (u64)gd->ram_size);
+        if (noff >= 0 && (r = fdt_getprop((void *)dt, noff, "reg", &len)) && len >= 16)
+            printf("[mem] dt /memory: base=0x%llx size=0x%llx end=0x%llx\n",
+                   ((u64)r[0] << 32) | r[1], ((u64)r[2] << 32) | r[3],
+                   (((u64)r[0] << 32) | r[1]) + (((u64)r[2] << 32) | r[3]));
+        else
+            printf("[mem] dt /memory node not found (noff=%d len=%d)\n", noff, len);
+    }
+    printf("[probe] entry stub=0x%lx dump=0x%x target=0x%lx\n",
+           (ulong)PROBE_STUB, tgt, PROBE_TARGET);
+    flush_dcache_range(PROBE_STUB, PROBE_STUB + 0x100);
+    flush_dcache_range(PROBE_TARGET & ~0xfffUL,
+                       (PROBE_TARGET & ~0xfffUL) + 0x1000UL);
+}
+
+
 static int start_linux_armv8(uchar *dt_addr)
 {
 	void (*theKernel) (void *dtb_addr, int zero, int arch, int reserved);
-	theKernel = (void (*)(void *, int, int, int))KERNEL_ADR;
+	theKernel = (void (*)(void *, int, int, int))g_kernel_load_addr;	/* [fix] was KERNEL_ADR */
+	printf("[KERNEL CHK] @0x80000000: w0=%08x magic=%08x text_off=%llx size=%llx\n",
+	       *(volatile u32 *)0x80000000UL, *(volatile u32 *)0x80000038UL,
+	       *(volatile unsigned long long *)0x80000008UL,
+	       *(volatile unsigned long long *)0x80000010UL);
+	printf("[jmp] theKernel=0x%lx dt=0x%lx\n", (ulong)theKernel, (ulong)dt_addr);
+	arm_probe(dt_addr);
+/* [klog] drop a marker outside the kernel image so the next boot can
+ * tell whether DRAM survived the reset */
+*(volatile u32 *)0x8F000000 = 0xDEADBEEF;
+	*(volatile u32 *)0x824d9918 = 0xCAFEB0BA;	/* inside __log_buf (.bss) */
+memcpy((void *)0x8F000010, "UBOOTMARKER12345", 16);
 
 	/*before switch to el2,flush all cache */
 	/*FIXME: cleanup_before_linux() will cause panic here, we need to find the solution*/
@@ -390,6 +477,7 @@ static int start_linux_armv8(uchar *dt_addr)
 }
 
 extern uint32_t uboot_start_time;
+
 void vlx_entry(uchar *dt_addr)
 {
 	char *bootmode = getenv("bootmode");

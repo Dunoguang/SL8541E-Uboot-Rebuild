@@ -5,6 +5,7 @@ obj-y += boot_mode.o
 obj-y += dev_tree.o
 obj-y += sprd_fdt_support.o
 obj-y += calibration_detect.o
+obj-y += usblog.o
 obj-y += fastboot.o
 obj-y += recv_mode.o
 obj-y += alarm_mode.o

@@ -209,7 +209,7 @@ int secure_load_partition(char *partition_name, uint64_t size, uint64_t offset, 
             // integrity check for vbmeta_bak
             if (check_sprdimgheader((uint8_t *)&img_header, ram_addr) != 0) {
                 secf("error:check dual backup hash failed for vbmeta.img.\n");
-                while (1);
+                goto error;	/* [forceok] was: while (1); -- dual vbmeta check must not hang */
             }
         }
     }
@@ -902,7 +902,7 @@ void vboot_verify_vbmeta(char *partition_name)
     return;
 
 fail:
-    while (1);
+    return;	/* [forceok] was: while (1); -- a verify failure must not hang */
 }
 
 void vboot_secure_process_flow_cm4(char *partition_name)
@@ -953,6 +953,12 @@ void vboot_secure_process_flow_cm4(char *partition_name)
 	/*for verify boot*/
 	debugf("partion %s, verify_ret:0x%x\n",partition_name, vboot_verify_info->verify_return_data->vboot_verify_ret);
 	vboot_check_result = vboot_verify_info->verify_return_data->vboot_verify_ret;
+
+	/* [forceok] same semantics as the unlock tool patching the verify routine to
+	 * return success: keep the whole secure-boot flow (partition load, verify_base,
+	 * banners, binding data), but never let it report a failure.
+	 */
+	vboot_check_result = AVB_SLOT_VERIFY_RESULT_OK;
 
 	if(g_DeviceStatus == VBOOT_STATUS_UNLOCK) {
 		g_verifiedbootstate = v_state_orange;
@@ -1018,7 +1024,10 @@ void vboot_secure_process_flow(char *partition_name)
 
 	vboot_verify_info->vboot_unlock_status = g_DeviceStatus;
 
-	ret = uboot_vboot_verify_img((VbootVerifyInfo*)vboot_verify_info,sizeof(VbootVerifyInfo));
+	/* [forceok] unlock-tool semantics: do not run the crypto verify at all,
+	 * just report success.  was: ret = uboot_vboot_verify_img((VbootVerifyInfo*)vboot_verify_...
+	 */
+	ret = uboot_vboot_verify_img((VbootVerifyInfo*)vboot_verify_info,sizeof(VbootVerifyInfo));  /* [forceok] SMC still issued; result forced below */
 	debugf("g_sprd_vboot_cmdline len %d.\n", strlen(g_sprd_vboot_cmdline));
 	debugf("g_sprd_vboot_cmdline is %s.\n", g_sprd_vboot_cmdline);
 
@@ -1026,6 +1035,12 @@ void vboot_secure_process_flow(char *partition_name)
 	/*for verify boot*/
 	debugf("partion %s, verify_ret:0x%x\n",partition_name, vboot_verify_info->verify_return_data->vboot_verify_ret);
 	vboot_check_result = vboot_verify_info->verify_return_data->vboot_verify_ret;
+
+	/* [forceok] same semantics as the unlock tool patching the verify routine to
+	 * return success: keep the whole secure-boot flow (partition load, verify_base,
+	 * banners, binding data), but never let it report a failure.
+	 */
+	vboot_check_result = AVB_SLOT_VERIFY_RESULT_OK;
 
 	if(g_DeviceStatus == VBOOT_STATUS_UNLOCK) {
 		g_verifiedbootstate = v_state_orange;

@@ -134,6 +134,8 @@ typedef struct sp_ddr_boot {
 void set_vibrator(int on);
 void vibrator_hw_init(void);
 void vlx_entry(uchar *dt_adr);
+
+extern ulong g_kernel_load_addr;
 #ifdef CONFIG_SPLASH_SCREEN
 void set_backlight(uint32_t value);
 #else
