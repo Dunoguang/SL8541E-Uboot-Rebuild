@@ -50,6 +50,7 @@ U-Boot 2015.07 的源码级重建。
 `build.sh` 会做三件容易被忽略的事：
 
 - 把仓库里那个 x86 的 `tools/dtc/dtc` 换成系统的 dtc
+  （这是对已跟踪文件的修改，`git checkout tools/dtc/dtc` 可还原）
 - 加 `-std=gnu11`（gcc 16 默认 gnu23，`typedef int bool` 会炸）
 - 传入展锐 `BspUBoot.mk` 里的那批 `-DCONFIG_*` 安全启动开关
 
